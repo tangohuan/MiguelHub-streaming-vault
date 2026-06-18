@@ -154,10 +154,27 @@
         @media (max-width: 768px) { .nav-links { display: none; } .hero-title { font-size: 2rem; } .movie-card { width: 50%; min-width: 150px; } .movie-card:hover { transform: scale(1.1); } .footer-links { grid-template-columns: repeat(2, 1fr); } .episodes-grid { grid-template-columns: 1fr; } }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .fade-in { animation: fadeIn 0.5s ease-out forwards; }
-    </style>
+    
+        .search-pagination { display: flex; justify-content: center; gap: 10px; margin-top: 30px; align-items: center; }
+        .search-pagination button { background: var(--bg-card); border: 1px solid var(--border); color: var(--text); padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 0.9rem; transition: all 0.3s; }
+        .search-pagination button:hover { background: var(--primary); border-color: var(--primary); }
+        .search-pagination button:disabled { opacity: 0.3; cursor: not-allowed; background: var(--bg-card); border-color: var(--border); }
+        .search-pagination span { color: var(--text-muted); font-size: 0.9rem; }
+        .search-filters { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .search-filter-btn { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-muted); padding: 6px 14px; border-radius: 20px; cursor: pointer; font-size: 0.8rem; transition: all 0.3s; }
+        .search-filter-btn:hover, .search-filter-btn.active { background: var(--primary); border-color: var(--primary); color: white; }
+</style>
+<base target="_blank">
 <base target="_blank">
 </head>
 <body>
+    <div id="fileProtocolWarning" style="display:none;position:fixed;top:0;left:0;right:0;background:#e50914;color:white;padding:15px;text-align:center;z-index:99999;font-weight:600;">
+        <i class="fas fa-exclamation-triangle"></i> 
+        You are opening this file directly from disk (file://). The video player will NOT work. 
+        Please host this file on a local server (Live Server, Python http.server, etc.) or upload to a web host.
+        <button onclick="document.getElementById('fileProtocolWarning').style.display='none'" style="margin-left:15px;background:white;color:#e50914;border:none;padding:5px 15px;border-radius:4px;cursor:pointer;font-weight:600;">Dismiss</button>
+    </div>
+
 
     <nav class="navbar" id="navbar">
         <div class="nav-left">
@@ -404,12 +421,23 @@
     <div class="search-page" id="searchPage">
         <div class="search-header">
             <h2>Search results for <span id="searchQuery">""</span></h2>
+            <p style="color:var(--text-muted);margin-top:5px;font-size:0.9rem;">Powered by TMDB — searching millions of titles</p>
+        </div>
+        <div class="search-filters" id="searchFilters">
+            <button class="search-filter-btn active" onclick="setSearchFilter('all')">All</button>
+            <button class="search-filter-btn" onclick="setSearchFilter('movie')">Movies</button>
+            <button class="search-filter-btn" onclick="setSearchFilter('tv')">TV Shows</button>
         </div>
         <div class="carousel" id="searchResults" style="flex-wrap: wrap; gap: 8px;"></div>
         <div class="no-results" id="noResults" style="display: none;">
             <i class="fas fa-search"></i>
             <h3>No results found</h3>
             <p>Try a different search term or check your spelling.</p>
+        </div>
+        <div class="search-pagination" id="searchPagination" style="display:none;">
+            <button onclick="changeSearchPage(-1)" id="searchPrevBtn"><i class="fas fa-chevron-left"></i> Prev</button>
+            <span id="searchPageNum">Page 1</span>
+            <button onclick="changeSearchPage(1)" id="searchNextBtn">Next <i class="fas fa-chevron-right"></i></button>
         </div>
     </div>
 
@@ -499,6 +527,10 @@
         ];
 
         document.addEventListener("DOMContentLoaded", async function() {
+            // Check if running from file:// protocol
+            if (window.location.protocol === 'file:') {
+                document.getElementById("fileProtocolWarning").style.display = "block";
+            }
             await loadAllData();
             renderContinueWatching();
             setupEventListeners();
@@ -867,10 +899,26 @@
             if (btn) { btn.disabled = false; btn.innerHTML = 'Load More'; }
         }
 
-        function watchContent(id, title, type) {
+        async function watchContent(id, title, type) {
             currentMovie = allContent.find(function(m) { return m.id === id; });
             if (!currentMovie) { showToast("Content not found"); return; }
-            const key = type === "tv" ? "t" + id : "m" + id;
+
+            // Convert TMDB ID to IMDb ID for embed compatibility
+            let embedId = id;
+            if (!String(id).startsWith('tt')) {
+                try {
+                    const extEndpoint = type === 'tv' ? '/tv/' + id + '/external_ids' : '/movie/' + id + '/external_ids';
+                    const extData = await fetchTMDB(extEndpoint, '', 1);
+                    if (extData && extData.imdb_id) {
+                        embedId = extData.imdb_id;
+                        currentMovie.imdbId = extData.imdb_id;
+                    }
+                } catch (e) {
+                    console.warn('IMDb ID lookup failed, using TMDB ID:', e);
+                }
+            }
+
+            const key = type === "tv" ? "t" + embedId : "m" + embedId;
             const savedProgress = vidfastProgress[key];
             let startAt = 0, startSeason = 1, startEpisode = 1;
             if (savedProgress) {
@@ -884,15 +932,18 @@
                           document.getElementById("moviesPage").style.display !== "none" ? "movies" :
                           document.getElementById("tvPage").style.display !== "none" ? "tv" :
                           document.getElementById("searchPage").style.display !== "none" ? "search" :
-                          document.getElementById("myListPage").style.display !== "none" ? "myList" : "home";
+                          document.getElementById("myListPage").style.display !== "none" ? "myList" : 
+                          document.getElementById("animationPage").style.display !== "none" ? "animation" :
+                          document.getElementById("animePage").style.display !== "none" ? "anime" :
+                          document.getElementById("rowPage").style.display !== "none" ? "row" : "home";
             let embedUrl;
             if (type === "tv") {
                 currentSeason = startSeason;
-                embedUrl = EMBED_BASE + "/tv/" + id + "/" + startSeason + "/" + startEpisode + "?autoPlay=true&title=false&poster=false&hideServer=true&startAt=" + startAt;
+                embedUrl = EMBED_BASE + "/tv/" + embedId + "/" + startSeason + "/" + startEpisode + "?autoPlay=true&title=false&poster=false&hideServer=true&startAt=" + startAt;
                 document.getElementById("episodesSection").classList.add("active");
                 renderEpisodes();
             } else {
-                embedUrl = EMBED_BASE + "/movie/" + id + "?autoPlay=true&title=false&poster=false&hideServer=true&startAt=" + startAt;
+                embedUrl = EMBED_BASE + "/movie/" + embedId + "?autoPlay=true&title=false&poster=false&hideServer=true&startAt=" + startAt;
                 document.getElementById("episodesSection").classList.remove("active");
             }
             document.getElementById("vidfastPlayer").src = embedUrl;
@@ -992,9 +1043,15 @@
             renderEpisodes();
         }
 
-        function playEpisode(season, episode) {
-            const id = currentMovie.id;
-            const embedUrl = EMBED_BASE + "/tv/" + id + "/" + season + "/" + episode + "?autoPlay=true&title=false&poster=false&hideServer=true";
+        async function playEpisode(season, episode) {
+            let embedId = currentMovie.imdbId || currentMovie.id;
+            if (!String(embedId).startsWith('tt') && !String(currentMovie.id).startsWith('tt')) {
+                try {
+                    const extData = await fetchTMDB('/tv/' + currentMovie.id + '/external_ids', '', 1);
+                    if (extData && extData.imdb_id) embedId = extData.imdb_id;
+                } catch (e) {}
+            }
+            const embedUrl = EMBED_BASE + "/tv/" + embedId + "/" + season + "/" + episode + "?autoPlay=true&title=false&poster=false&hideServer=true";
             document.getElementById("vidfastPlayer").src = embedUrl;
             document.querySelectorAll(".episode-item").forEach(function(card, idx) { card.classList.toggle("active", idx === episode - 1); });
             showToast("Playing Season " + season + ", Episode " + episode);
@@ -1120,21 +1177,104 @@
             }, 200);
         }
 
+        let currentSearchQuery = '';
+        let currentSearchPage = 1;
+        let currentSearchFilter = 'all';
+        let totalSearchPages = 1;
+
+        function setSearchFilter(filter) {
+            currentSearchFilter = filter;
+            document.querySelectorAll('#searchFilters .search-filter-btn').forEach(function(btn) { btn.classList.remove('active'); });
+            event.target.classList.add('active');
+            if (currentSearchQuery) performSearch(currentSearchQuery, 1);
+        }
+
         function handleSearch(e) {
             if (e.key === "Enter") {
-                const query = e.target.value.toLowerCase().trim();
+                const query = e.target.value.trim();
                 if (!query) return;
-                const results = allContent.filter(function(m) { return m.title.toLowerCase().includes(query) || m.genre.toLowerCase().includes(query); });
-                hideAllPages();
-                document.getElementById("searchPage").style.display = "block";
-                document.getElementById("footer").style.display = "block";
-                document.getElementById("searchQuery").textContent = '"' + query + '"';
-                previousPage = 'search';
-                const resultsContainer = document.getElementById("searchResults");
-                const noResults = document.getElementById("noResults");
-                if (results.length > 0) { resultsContainer.innerHTML = results.map(function(m) { return createCard(m); }).join(""); resultsContainer.style.display = "flex"; noResults.style.display = "none"; }
-                else { resultsContainer.innerHTML = ""; resultsContainer.style.display = "none"; noResults.style.display = "block"; }
-                window.scrollTo(0, 0);
+                currentSearchQuery = query;
+                currentSearchPage = 1;
+                performSearch(query, 1);
+            }
+        }
+
+        async function performSearch(query, page) {
+            hideAllPages();
+            document.getElementById("searchPage").style.display = "block";
+            document.getElementById("footer").style.display = "block";
+            document.getElementById("searchQuery").textContent = '"' + query + '"';
+            previousPage = 'search';
+
+            const resultsContainer = document.getElementById("searchResults");
+            const noResults = document.getElementById("noResults");
+            const pagination = document.getElementById("searchPagination");
+
+            resultsContainer.innerHTML = '<div style="color:var(--text-muted);padding:40px;text-align:center;width:100%;"><span class="spinner"></span> Searching TMDB...</div>';
+            noResults.style.display = "none";
+            pagination.style.display = "none";
+
+            try {
+                let endpoint, extraParams;
+                if (currentSearchFilter === 'movie') {
+                    endpoint = '/search/movie';
+                    extraParams = '&query=' + encodeURIComponent(query);
+                } else if (currentSearchFilter === 'tv') {
+                    endpoint = '/search/tv';
+                    extraParams = '&query=' + encodeURIComponent(query);
+                } else {
+                    endpoint = '/search/multi';
+                    extraParams = '&query=' + encodeURIComponent(query);
+                }
+
+                const data = await fetchTMDB(endpoint, extraParams, page);
+                const results = data.results || [];
+                totalSearchPages = data.total_pages || 1;
+
+                // Filter out people from multi-search, keep only movies and TV
+                const filtered = results.filter(function(item) {
+                    return item.media_type !== 'person' && (item.poster_path || item.backdrop_path);
+                });
+
+                const normalized = normalizeContent(filtered, currentSearchFilter === 'all' ? 'mixed' : currentSearchFilter);
+
+                // Merge into allContent so My List and other features work
+                normalized.forEach(function(item) {
+                    if (!allContent.find(function(m) { return m.id === item.id; })) {
+                        allContent.push(item);
+                    }
+                });
+
+                if (normalized.length > 0) {
+                    resultsContainer.innerHTML = normalized.map(function(m) { return createCard(m); }).join("");
+                    resultsContainer.style.display = "flex";
+                    noResults.style.display = "none";
+
+                    // Show pagination
+                    pagination.style.display = "flex";
+                    document.getElementById("searchPageNum").textContent = "Page " + page + " of " + totalSearchPages;
+                    document.getElementById("searchPrevBtn").disabled = page <= 1;
+                    document.getElementById("searchNextBtn").disabled = page >= totalSearchPages;
+                } else {
+                    resultsContainer.innerHTML = "";
+                    resultsContainer.style.display = "none";
+                    noResults.style.display = "block";
+                    pagination.style.display = "none";
+                }
+            } catch (e) {
+                console.error("Search failed:", e);
+                resultsContainer.innerHTML = '<div style="color:var(--text-muted);padding:40px;text-align:center;width:100%;">Search failed. Please check your connection and try again.</div>';
+                pagination.style.display = "none";
+            }
+
+            window.scrollTo(0, 0);
+        }
+
+        function changeSearchPage(direction) {
+            const newPage = currentSearchPage + direction;
+            if (newPage >= 1 && newPage <= totalSearchPages) {
+                currentSearchPage = newPage;
+                performSearch(currentSearchQuery, newPage);
             }
         }
 
