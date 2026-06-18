@@ -55,11 +55,73 @@
         .carousel-nav:hover { background: rgba(20,20,20,0.8); }
         .carousel-nav.prev { left: 0; }
         .carousel-nav.next { right: 0; }
-        .movie-card { position: relative; flex: 0 0 auto; width: 16%; min-width: 200px; aspect-ratio: 16/9; border-radius: 4px; overflow: hidden; cursor: pointer; transition: transform 0.3s, z-index 0s; z-index: 1; background: var(--bg-card); }
+
+        /* ===== CARD TITLE OVERLAY (visible before hover) ===== */
+        .movie-card {
+            position: relative;
+            flex: 0 0 auto;
+            width: 16%;
+            min-width: 200px;
+            aspect-ratio: 16/9;
+            border-radius: 4px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: transform 0.3s, z-index 0s;
+            z-index: 1;
+            background: var(--bg-card);
+        }
         .movie-card:hover { transform: scale(1.4); z-index: 100; transition-delay: 0.3s; }
-        .movie-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
-        .card-info { position: absolute; bottom: 0; left: 0; right: 0; padding: 50px 12px 12px; background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, transparent 100%); opacity: 0; transition: opacity 0.3s; }
-        .movie-card:hover .card-info { opacity: 1; transition-delay: 0.3s; }
+        .movie-card img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .card-title-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 30px 10px 8px;
+            background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 60%, transparent 100%);
+            z-index: 2;
+            transition: opacity 0.3s;
+        }
+        .movie-card:hover .card-title-overlay {
+            opacity: 0;
+            transition-delay: 0.3s;
+        }
+        .card-title-text {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: white;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            margin-bottom: 2px;
+        }
+        .card-year-text {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+        }
+        .card-info {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 50px 12px 12px;
+            background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, transparent 100%);
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 3;
+        }
+        .movie-card:hover .card-info {
+            opacity: 1;
+            transition-delay: 0.3s;
+        }
+
         .card-actions { display: flex; gap: 8px; margin-bottom: 8px; }
         .card-btn { width: 32px; height: 32px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.5); background: transparent; color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; font-size: 0.8rem; }
         .card-btn:hover { border-color: white; background: rgba(255,255,255,0.1); }
@@ -1129,8 +1191,13 @@
             const safeTitle = escapeHtml(item.title);
             const safeId = String(item.id).replace(/"/g, '&quot;');
             const safeType = type.replace(/"/g, '&quot;');
+            const safeYear = escapeHtml(item.year || '');
             return '<div class="movie-card" data-id="' + safeId + '" data-title="' + safeTitle + '" data-type="' + safeType + '">' +
                 '<img src="' + posterUrl + '" alt="' + safeTitle + '" loading="lazy" class="card-img">' +
+                '<div class="card-title-overlay">' +
+                    '<div class="card-title-text">' + safeTitle + '</div>' +
+                    '<div class="card-year-text">' + safeYear + '</div>' +
+                '</div>' +
                 '<div class="card-info">' +
                     '<div class="card-actions">' +
                         '<button class="card-btn play" data-action="play" data-id="' + safeId + '" data-title="' + safeTitle + '" data-type="' + safeType + '"><i class="fas fa-play"></i></button>' +
