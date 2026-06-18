@@ -1268,7 +1268,10 @@
         }
 
         async function loadMoreContent(type) {
-            const btn = document.getElementById('loadMore' + type.charAt(0).toUpperCase() + type.slice(1));
+            // Map type to correct button ID
+            const btnMap = { movie: 'loadMoreMovies', tv: 'loadMoreTV', animation: 'loadMoreAnimation', anime: 'loadMoreAnime' };
+            const btnId = btnMap[type] || ('loadMore' + type.charAt(0).toUpperCase() + type.slice(1));
+            const btn = document.getElementById(btnId);
             if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Loading...'; }
             currentPage[type]++;
             try {
@@ -1284,6 +1287,7 @@
                 if (container) container.innerHTML += normalized.map(function(item) { return createCard(item); }).join('');
                 allContent = allContent.concat(normalized);
             } catch (e) {
+                console.error('Load more failed:', e);
                 showToast('Failed to load more content');
                 currentPage[type]--;
             }
@@ -1371,11 +1375,17 @@
 
         function goBack() {
             document.getElementById("vidfastPlayer").src = "";
+            resetPlayerInteraction();
+            closeTrailer();
             if (previousPage === 'home') showHome();
             else if (previousPage === 'movies') showMoviesPage();
             else if (previousPage === 'tv') showTVShowsPage();
             else if (previousPage === 'search') { document.getElementById("searchPage").style.display = "block"; document.getElementById("footer").style.display = "block"; }
             else if (previousPage === 'myList') showMyList();
+            else if (previousPage === 'animation') showAnimationPage();
+            else if (previousPage === 'anime') showAnimePage();
+            else if (previousPage === 'history') showHistory();
+            else if (previousPage === 'row') { document.getElementById("rowPage").style.display = "block"; document.getElementById("footer").style.display = "block"; }
             else showHome();
         }
 
