@@ -270,6 +270,48 @@
             .skeleton-card { width: 50%; min-width: 150px; }
             .trailer-container { width: 95%; }
         }
+
+        /* Anti-popup protection */
+        #playerWrapper { position: relative; overflow: hidden; }
+        #playerWrapper.fullscreen { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 9999; }
+        #clickOverlay { transition: opacity 0.3s; }
+        #clickOverlay.hidden { opacity: 0; pointer-events: none; }
+        #clickOverlay::after {
+            content: '▶ Click to Play';
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(229, 9, 20, 0.9);
+            color: white;
+            padding: 15px 40px;
+            border-radius: 8px;
+            font-size: 1.2rem;
+            font-weight: 700;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        #clickOverlay.paused::after { opacity: 1; }
+
+        /* Block pointer events on iframe when overlay is active */
+        #playerWrapper.overlay-active iframe { pointer-events: none; }
+
+        /* Ad-block indicator */
+        .ad-block-notice {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            color: #ffcc00;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            z-index: 20;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .ad-block-notice.show { opacity: 1; }
 </style>
 <base target="_blank">
 <base target="_blank">
@@ -513,8 +555,20 @@
         <div class="player-container">
             <button class="player-back" onclick="goBack()"><i class="fas fa-arrow-left"></i> Back</button>
             <div class="player-wrapper">
-                <iframe id="vidfastPlayer" allowfullscreen allow="autoplay; fullscreen; encrypted-media"></iframe>
+                <div style="position:relative;width:100%;aspect-ratio:16/9;background:black;" id="playerWrapper" class="overlay-active">
+                <iframe id="vidfastPlayer" 
+                    sandbox="allow-scripts allow-same-origin allow-presentation" 
+                    allow="autoplay; fullscreen; encrypted-media; picture-in-picture" 
+                    style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;"
+                    loading="eager">
+                </iframe>
+                <!-- Click overlay: captures all clicks, passes through only after user intent check -->
+                <div id="clickOverlay" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:10;cursor:pointer;background:transparent;" onclick="handlePlayerClick(event)"></div>
             </div>
+            </div>
+        </div>
+        <div class="ad-block-notice" id="adBlockNotice">
+            <i class="fas fa-shield-alt"></i> Ad protection active — click the overlay to interact
         </div>
         <div class="player-controls-bar">
             <div class="server-selector" id="serverSelector">
@@ -1185,6 +1239,7 @@
                 document.getElementById("episodesSection").classList.remove("active");
             }
             document.getElementById("vidfastPlayer").src = embedUrl;
+            resetPlayerInteraction();
             renderWatchDetails();
 
             // Load cast, recommendations, trailer
@@ -1546,6 +1601,96 @@
             setTimeout(function() { toast.classList.remove("show"); }, 3000);
         }
     
+
+        /* ========== CLICK OVERLAY (ANTI-POPUP PROTECTION) ========== */
+        let playerInteracted = false;
+        let isPlaying = false;
+
+        function handlePlayerClick(e) {
+            const overlay = document.getElementById('clickOverlay');
+            const wrapper = document.getElementById('playerWrapper');
+
+            if (!playerInteracted) {
+                // First click: reveal the iframe and start playback
+                playerInteracted = true;
+                overlay.classList.add('hidden');
+                wrapper.classList.remove('overlay-active');
+                isPlaying = true;
+                showToast('Player unlocked — use controls below for playback');
+
+                // Try to autoplay via postMessage
+                setTimeout(function() {
+                    playerCommand('play');
+                }, 500);
+
+                // Show ad-block notice briefly
+                const notice = document.getElementById('adBlockNotice');
+                notice.classList.add('show');
+                setTimeout(function() { notice.classList.remove('show'); }, 4000);
+
+                return;
+            }
+
+            // Subsequent clicks: toggle play/pause
+            if (isPlaying) {
+                playerCommand('pause');
+                overlay.classList.remove('hidden');
+                overlay.classList.add('paused');
+                isPlaying = false;
+            } else {
+                playerCommand('play');
+                overlay.classList.add('hidden');
+                overlay.classList.remove('paused');
+                isPlaying = true;
+            }
+        }
+
+        function resetPlayerInteraction() {
+            playerInteracted = false;
+            isPlaying = false;
+            const overlay = document.getElementById('clickOverlay');
+            const wrapper = document.getElementById('playerWrapper');
+            overlay.classList.remove('hidden', 'paused');
+            wrapper.classList.add('overlay-active');
+        }
+
+        /* ========== ENHANCED PLAYER COMMANDS (ANTI-POPUP) ========== */
+        function playerCommand(command, value) {
+            const iframe = document.getElementById("vidfastPlayer");
+            if (!iframe || !iframe.contentWindow) return;
+
+            // Block popup-inducing commands from the iframe
+            // Only send safe postMessage commands
+            if (command === 'togglePlay') {
+                // Toggle between play and pause
+                if (isPlaying) {
+                    iframe.contentWindow.postMessage({ command: 'pause' }, "*");
+                    isPlaying = false;
+                } else {
+                    iframe.contentWindow.postMessage({ command: 'play' }, "*");
+                    isPlaying = true;
+                }
+                return;
+            }
+
+            if (command === 'play') {
+                iframe.contentWindow.postMessage({ command: 'play' }, "*");
+                isPlaying = true;
+                return;
+            }
+
+            if (command === 'pause') {
+                iframe.contentWindow.postMessage({ command: 'pause' }, "*");
+                isPlaying = false;
+                return;
+            }
+
+            const msg = { command: command };
+            if (command === "seek") msg.time = value || 0;
+            if (command === "volume") msg.level = Math.max(0, Math.min(1, value || 0.5));
+            if (command === "mute") msg.muted = value !== undefined ? value : true;
+            iframe.contentWindow.postMessage(msg, "*");
+        }
         /* ========== SERVER SWITCHING ========== */
         function buildEmbedUrl(imdbId, type, season, episode, startAt) {
             const server = SERVERS[currentServer];
@@ -1599,15 +1744,30 @@
             }
         }
 
-        /* ========== FULLSCREEN ========== */
+        /* ========== FULLSCREEN (ANTI-POPUP) ========== */
         function toggleFullscreen() {
-            const player = document.querySelector('.player-wrapper');
+            const wrapper = document.getElementById('playerWrapper');
             if (!document.fullscreenElement) {
-                player.requestFullscreen().catch(function(e) { console.log(e); });
+                // Use our wrapper for fullscreen, NOT the iframe
+                // This prevents the iframe from triggering popups via its own fullscreen button
+                wrapper.requestFullscreen().catch(function(e) { 
+                    console.log('Fullscreen error:', e);
+                    // Fallback: CSS fullscreen
+                    wrapper.classList.add('fullscreen');
+                });
             } else {
                 document.exitFullscreen();
+                wrapper.classList.remove('fullscreen');
             }
         }
+
+        // Listen for fullscreen change to clean up
+        document.addEventListener('fullscreenchange', function() {
+            const wrapper = document.getElementById('playerWrapper');
+            if (!document.fullscreenElement) {
+                wrapper.classList.remove('fullscreen');
+            }
+        });
 
         /* ========== TRAILER ========== */
         async function loadTrailer(id, type) {
@@ -1937,6 +2097,7 @@
         /* ========== GO BACK (updated) ========== */
         function goBack() {
             document.getElementById("vidfastPlayer").src = "";
+            resetPlayerInteraction();
             closeTrailer();
             if (previousPage === 'home') showHome();
             else if (previousPage === 'movies') showMoviesPage();
