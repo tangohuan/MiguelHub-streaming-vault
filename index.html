@@ -732,8 +732,9 @@
             <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
                 <button class="control-btn" onclick="playerCommand('play')"><i class="fas fa-play"></i> Play</button>
                 <button class="control-btn" onclick="playerCommand('pause')"><i class="fas fa-pause"></i> Pause</button>
+                <button class="control-btn" onclick="seekRelative(-10)"><i class="fas fa-backward"></i> -10s</button>
+                <button class="control-btn" onclick="seekRelative(10)"><i class="fas fa-forward"></i> +10s</button>
                 <button class="control-btn" onclick="toggleMute()"><i class="fas fa-volume-up" id="muteIcon"></i> Mute</button>
-                <button class="control-btn" onclick="playerCommand('getStatus')"><i class="fas fa-info"></i> Status</button>
                 <button class="control-btn" onclick="toggleFullscreen()"><i class="fas fa-expand"></i> Fullscreen</button>
                 <div class="server-badge"><span class="rec">HD:</span> <span id="currentServerName">VidFast</span></div>
             </div>
@@ -1002,8 +1003,18 @@
                     if (e.code === "Space") { e.preventDefault(); playerCommand('togglePlay'); }
                     else if (e.key === "f" || e.key === "F") { toggleFullscreen(); }
                     else if (e.key === "m" || e.key === "M") { toggleMute(); }
-                    else if (e.key === "ArrowLeft") { playerCommand('seek', -10); }
-                    else if (e.key === "ArrowRight") { playerCommand('seek', 10); }
+                    else if (e.key === "ArrowLeft") { 
+                    e.preventDefault();
+                    currentPlaybackTime = Math.max(0, currentPlaybackTime - 10);
+                    playerCommand('seek', currentPlaybackTime);
+                    showToast('Seek: ' + formatTime(currentPlaybackTime));
+                }
+                    else if (e.key === "ArrowRight") { 
+                    e.preventDefault();
+                    currentPlaybackTime += 10;
+                    playerCommand('seek', currentPlaybackTime);
+                    showToast('Seek: ' + formatTime(currentPlaybackTime));
+                }
                     else if (e.key === "ArrowUp") { playerCommand('volume', 0.1); }
                     else if (e.key === "ArrowDown") { playerCommand('volume', -0.1); }
                 }
@@ -1512,6 +1523,8 @@
 
         function goBack() {
             document.getElementById("vidfastPlayer").src = "";
+            if (playbackInterval) clearInterval(playbackInterval);
+            currentPlaybackTime = 0;
             resetPlayerInteraction();
             closeTrailer();
             if (previousPage === 'home') showHome();
@@ -1627,11 +1640,26 @@
         function playerCommand(command, value) {
             const iframe = document.getElementById("vidfastPlayer");
             if (!iframe || !iframe.contentWindow) return;
+
+            if (command === 'togglePlay') {
+                iframe.contentWindow.postMessage({ command: 'play' }, "*");
+                return;
+            }
+
             const msg = { command: command };
-            if (command === "seek") msg.time = value || 0;
+            if (command === "seek") {
+                msg.time = value || 0;
+                currentPlaybackTime = value || 0;
+            }
             if (command === "volume") msg.level = value || 0.5;
             if (command === "mute") msg.muted = value !== undefined ? value : true;
             iframe.contentWindow.postMessage(msg, "*");
+        }
+
+        function seekRelative(seconds) {
+            currentPlaybackTime = Math.max(0, currentPlaybackTime + seconds);
+            playerCommand('seek', currentPlaybackTime);
+            showToast((seconds > 0 ? '+' : '') + seconds + 's — ' + formatTime(currentPlaybackTime));
         }
 
         function toggleMute() {
@@ -1855,6 +1883,13 @@
 
         function toggleMyList() { if (currentMovie) addToList(currentMovie.id); }
 
+        function formatTime(seconds) {
+            if (!seconds || seconds < 0) return '0:00';
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return mins + ':' + (secs < 10 ? '0' : '') + secs;
+        }
+
         function shareMovie() {
             if (navigator.share) { navigator.share({ title: currentMovie.title, text: "Watch " + currentMovie.title + " on MIGUEL HUB", url: window.location.href }); }
             else { navigator.clipboard.writeText(window.location.href); showToast("Link copied to clipboard!"); }
@@ -1871,6 +1906,8 @@
 
         /* ========== EPISODE NAVIGATION ========== */
         let currentEpisodeNumber = 1;
+        let currentPlaybackTime = 0;
+        let playbackInterval = null;
 
         function updateEpisodeNav() {
             const navBar = document.getElementById('episodeNavBar');
@@ -2485,6 +2522,8 @@
         /* ========== GO BACK (updated) ========== */
         function goBack() {
             document.getElementById("vidfastPlayer").src = "";
+            if (playbackInterval) clearInterval(playbackInterval);
+            currentPlaybackTime = 0;
             resetPlayerInteraction();
             closeTrailer();
             if (previousPage === 'home') showHome();
