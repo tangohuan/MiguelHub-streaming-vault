@@ -294,7 +294,9 @@
         #clickOverlay.paused::after { opacity: 1; }
 
         /* Block pointer events on iframe when overlay is active */
-        #playerWrapper.overlay-active iframe { pointer-events: none; }
+        /* Overlay active: iframe clicks are blocked by the overlay div, not pointer-events */
+        #playerWrapper.overlay-active #clickOverlay { display: block; }
+        #playerWrapper:not(.overlay-active) #clickOverlay { display: none; }
 
         /* Ad-block indicator */
         .ad-block-notice {
@@ -557,10 +559,11 @@
             <div class="player-wrapper">
                 <div style="position:relative;width:100%;aspect-ratio:16/9;background:black;" id="playerWrapper" class="overlay-active">
                 <iframe id="vidfastPlayer" 
-                    sandbox="allow-scripts allow-same-origin allow-presentation" 
                     allow="autoplay; fullscreen; encrypted-media; picture-in-picture" 
                     style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;"
-                    loading="eager">
+                    loading="eager"
+                    referrerpolicy="no-referrer"
+                    importance="high">
                 </iframe>
                 <!-- Click overlay: captures all clicks, passes through only after user intent check -->
                 <div id="clickOverlay" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:10;cursor:pointer;background:transparent;" onclick="handlePlayerClick(event)"></div>
@@ -1611,27 +1614,30 @@
             const wrapper = document.getElementById('playerWrapper');
 
             if (!playerInteracted) {
-                // First click: reveal the iframe and start playback
+                // First click: user explicitly wants to play
+                // We pass this ONE click through, but keep overlay for future protection
                 playerInteracted = true;
                 overlay.classList.add('hidden');
                 wrapper.classList.remove('overlay-active');
                 isPlaying = true;
-                showToast('Player unlocked — use controls below for playback');
 
                 // Try to autoplay via postMessage
                 setTimeout(function() {
                     playerCommand('play');
-                }, 500);
+                }, 300);
 
-                // Show ad-block notice briefly
-                const notice = document.getElementById('adBlockNotice');
-                notice.classList.add('show');
-                setTimeout(function() { notice.classList.remove('show'); }, 4000);
+                // After 2 seconds, re-enable overlay to catch ad clicks
+                setTimeout(function() {
+                    if (!isPlaying) return;
+                    overlay.classList.remove('hidden');
+                    wrapper.classList.add('overlay-active');
+                }, 2000);
 
                 return;
             }
 
-            // Subsequent clicks: toggle play/pause
+            // Subsequent clicks on overlay: toggle play/pause via postMessage
+            // The overlay prevents the iframe from receiving the click directly
             if (isPlaying) {
                 playerCommand('pause');
                 overlay.classList.remove('hidden');
@@ -1642,6 +1648,10 @@
                 overlay.classList.add('hidden');
                 overlay.classList.remove('paused');
                 isPlaying = true;
+                // Re-enable overlay after brief delay
+                setTimeout(function() {
+                    overlay.classList.remove('hidden');
+                }, 2000);
             }
         }
 
