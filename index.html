@@ -596,7 +596,7 @@
         </div>
         <div class="genre-tabs" id="movieGenreTabs"></div>
         <div class="page-grid" id="moviesGrid"></div>
-        <button class="load-more-btn" id="loadMoreMovies" onclick="loadMoreContent('movie')">Load More</button>
+        <button class="load-more-btn" id="loadMoreMovies" data-load-type="movie">Load More</button>
     </div>
 
     <div class="tv-page" id="tvPage">
@@ -606,7 +606,7 @@
         </div>
         <div class="genre-tabs" id="tvGenreTabs"></div>
         <div class="page-grid" id="tvGrid"></div>
-        <button class="load-more-btn" id="loadMoreTV" onclick="loadMoreContent('tv')">Load More</button>
+        <button class="load-more-btn" id="loadMoreTV" data-load-type="tv">Load More</button>
     </div>
 
     <div class="animation-page" id="animationPage">
@@ -615,7 +615,7 @@
             <p>Browse animated movies and shows</p>
         </div>
         <div class="page-grid" id="animationGrid"></div>
-        <button class="load-more-btn" id="loadMoreAnimation" onclick="loadMoreContent('animation')">Load More</button>
+        <button class="load-more-btn" id="loadMoreAnimation" data-load-type="animation">Load More</button>
     </div>
 
     <div class="anime-page" id="animePage">
@@ -624,7 +624,7 @@
             <p>Browse anime series and movies</p>
         </div>
         <div class="page-grid" id="animeGrid"></div>
-        <button class="load-more-btn" id="loadMoreAnime" onclick="loadMoreContent('anime')">Load More</button>
+        <button class="load-more-btn" id="loadMoreAnime" data-load-type="anime">Load More</button>
     </div>
 
     <div class="row-page" id="rowPage">
@@ -902,6 +902,17 @@
         });
 
         function setupEventListeners() {
+            // Load More button delegation
+            document.addEventListener('click', function(e) {
+                const loadBtn = e.target.closest('[data-load-type]');
+                if (loadBtn) {
+                    e.preventDefault();
+                    const type = loadBtn.getAttribute('data-load-type');
+                    console.log('[Event] Load more clicked for:', type);
+                    loadMoreContent(type);
+                }
+            });
+
             document.addEventListener("keydown", function(e) {
                 const watchPage = document.getElementById("watchPage");
                 const shortcutsOverlay = document.getElementById("shortcutsOverlay");
@@ -1268,30 +1279,89 @@
         }
 
         async function loadMoreContent(type) {
-            // Map type to correct button ID
+            console.log('[LoadMore] Starting for type:', type);
             const btnMap = { movie: 'loadMoreMovies', tv: 'loadMoreTV', animation: 'loadMoreAnimation', anime: 'loadMoreAnime' };
-            const btnId = btnMap[type] || ('loadMore' + type.charAt(0).toUpperCase() + type.slice(1));
+            const btnId = btnMap[type];
             const btn = document.getElementById(btnId);
-            if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Loading...'; }
+
+            if (!btn) {
+                console.error('[LoadMore] Button not found:', btnId);
+                showToast('Error: Button not found');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Loading...';
+
+            currentPage[type] = currentPage[type] || 1;
             currentPage[type]++;
+
+            console.log('[LoadMore] Fetching page', currentPage[type], 'for', type);
+
             try {
-                let endpoint, extraParams;
-                if (type === 'movie') { endpoint = '/discover/movie'; extraParams = currentGenre.movie ? '&with_genres=' + currentGenre.movie : ''; }
-                else if (type === 'tv') { endpoint = '/discover/tv'; extraParams = currentGenre.tv ? '&with_genres=' + currentGenre.tv : ''; }
-                else if (type === 'animation') { endpoint = '/discover/movie'; extraParams = '&with_genres=16'; }
-                else if (type === 'anime') { endpoint = '/discover/tv'; extraParams = '&with_genres=16'; }
-                const data = await fetchTMDB(endpoint, extraParams, currentPage[type]);
-                const normalized = normalizeContent(data.results || [], type === 'animation' ? 'movie' : type === 'anime' ? 'tv' : type);
+                let endpoint, extraParams = '';
+                if (type === 'movie') { 
+                    endpoint = '/discover/movie'; 
+                    extraParams = currentGenre.movie ? '&with_genres=' + currentGenre.movie : ''; 
+                } else if (type === 'tv') { 
+                    endpoint = '/discover/tv'; 
+                    extraParams = currentGenre.tv ? '&with_genres=' + currentGenre.tv : ''; 
+                } else if (type === 'animation') { 
+                    endpoint = '/discover/movie'; 
+                    extraParams = '&with_genres=16'; 
+                } else if (type === 'anime') { 
+                    endpoint = '/discover/tv'; 
+                    extraParams = '&with_genres=16'; 
+                } else {
+                    throw new Error('Unknown type: ' + type);
+                }
+
+                const url = TMDB_BASE + endpoint + '?api_key=' + TMDB_API_KEY + extraParams + '&language=en-US&page=' + currentPage[type];
+                console.log('[LoadMore] URL:', url);
+
+                const res = await fetch(url);
+                console.log('[LoadMore] Response status:', res.status);
+
+                if (!res.ok) {
+                    throw new Error('HTTP ' + res.status + ' - ' + res.statusText);
+                }
+
+                const data = await res.json();
+                console.log('[LoadMore] Results:', data.results ? data.results.length : 0);
+
+                if (!data.results || data.results.length === 0) {
+                    showToast('No more content available');
+                    currentPage[type]--;
+                    btn.disabled = false;
+                    btn.innerHTML = 'Load More';
+                    return;
+                }
+
+                const normalized = normalizeContent(data.results, type === 'animation' ? 'movie' : type === 'anime' ? 'tv' : type);
+                console.log('[LoadMore] Normalized:', normalized.length);
+
                 const gridId = type + 'Grid';
                 const container = document.getElementById(gridId);
-                if (container) container.innerHTML += normalized.map(function(item) { return createCard(item); }).join('');
+
+                if (!container) {
+                    throw new Error('Container not found: ' + gridId);
+                }
+
+                const html = normalized.map(function(item) { return createCard(item); }).join('');
+                container.insertAdjacentHTML('beforeend', html);
                 allContent = allContent.concat(normalized);
+
+                showToast('Loaded ' + normalized.length + ' more items');
+
             } catch (e) {
-                console.error('Load more failed:', e);
-                showToast('Failed to load more content');
+                console.error('[LoadMore] Error:', e);
+                showToast('Failed: ' + e.message);
                 currentPage[type]--;
             }
-            if (btn) { btn.disabled = false; btn.innerHTML = 'Load More'; }
+
+            btn.disabled = false;
+            btn.innerHTML = 'Load More';
+            console.log('[LoadMore] Complete');
         }
 
         async function watchContent(id, title, type) {
