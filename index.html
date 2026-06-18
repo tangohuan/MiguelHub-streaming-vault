@@ -1340,7 +1340,7 @@
                 const normalized = normalizeContent(data.results, type === 'animation' ? 'movie' : type === 'anime' ? 'tv' : type);
                 console.log('[LoadMore] Normalized:', normalized.length);
 
-                const gridId = type + 'Grid';
+                const gridId = (type === 'movie' ? 'movies' : type) + 'Grid';
                 const container = document.getElementById(gridId);
 
                 if (!container) {
