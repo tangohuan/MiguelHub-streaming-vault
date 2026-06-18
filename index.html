@@ -924,7 +924,7 @@
                     backdrop: item.backdrop_path ? TMDB_IMG + '/original' + item.backdrop_path : null,
                     desc: item.overview || 'No description available.',
                     type: isTV ? 'tv' : 'movie',
-                    seasons: isTV ? (item.number_of_seasons || 3) : null,
+                    seasons: isTV ? (item.number_of_seasons || null) : null,
                     genreIds: item.genre_ids || []
                 };
             }).filter(function(item) { return item.poster; });
@@ -1287,6 +1287,16 @@
         }
 
         function renderEpisodes() {
+            // DEPRECATED: This function creates fake data. 
+            // Use renderRealEpisodes() instead which fetches real TMDB data.
+            if (!currentMovie) return;
+
+            // Try to fetch real data instead of showing dummies
+            renderRealEpisodes();
+        }
+
+        // Legacy function - kept for compatibility but redirects to real data
+        function _legacyRenderEpisodes() {
             if (!currentMovie || !currentMovie.seasons) return;
             const seasons = currentMovie.seasons;
             let tabsHtml = "";
@@ -1886,16 +1896,28 @@
 
         /* ========== REAL EPISODE DATA ========== */
         async function renderRealEpisodes() {
-            if (!currentMovie || !currentMovie.seasons) return;
+            if (!currentMovie) return;
+
+            // First, fetch full TV show details to get accurate season count
+            let seasonCount = currentMovie.seasons;
+            if (!seasonCount) {
+                try {
+                    const showData = await fetchTMDB('/tv/' + currentMovie.id, '', 1);
+                    seasonCount = showData.number_of_seasons || 1;
+                    currentMovie.seasons = seasonCount;
+                } catch (e) {
+                    seasonCount = 1;
+                }
+            }
 
             try {
                 const data = await fetchTMDB('/tv/' + currentMovie.id + '/season/' + currentSeason, '', 1);
                 const episodes = data.episodes || [];
                 realEpisodeData = episodes;
 
-                const seasons = currentMovie.seasons;
+                // Build season tabs with CORRECT season count
                 let tabsHtml = "";
-                for (let i = 1; i <= seasons; i++) {
+                for (let i = 1; i <= seasonCount; i++) {
                     tabsHtml += '<button class="season-tab ' + (i === currentSeason ? "active" : "") + '" onclick="changeSeason(' + i + ')">Season ' + i + '</button>';
                 }
                 document.getElementById("seasonTabs").innerHTML = tabsHtml;
@@ -1904,8 +1926,8 @@
                 epGrid.innerHTML = '';
 
                 if (episodes.length === 0) {
-                    // Fallback to dummy episodes
-                    renderEpisodes();
+                    // Show "no episodes" message instead of dummy data
+                    epGrid.innerHTML = '<div style="color:var(--text-muted);padding:40px;text-align:center;">No episodes available for this season.</div>';
                     return;
                 }
 
