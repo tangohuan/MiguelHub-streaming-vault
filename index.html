@@ -1797,10 +1797,13 @@
         /* ========== STAR RATING ========== */
         function renderStarRating(id) {
             const container = document.getElementById('starRating');
+            if (!container) return;
             const currentRating = userRatings[id] || 0;
             let html = '<span style="color:var(--text-muted);margin-right:10px;font-size:0.9rem;">Rate:</span>';
-            for (let i = 1; i <= 5; i++) {
-                html += '<i class="' + (i <= currentRating ? 'fas' : 'far') + ' fa-star" onclick="rateMovie('' + id + '', ' + i + ')" title="' + i + ' stars"></i>';
+            for (var i = 1; i <= 5; i++) {
+                var starClass = i <= currentRating ? 'fas' : 'far';
+                var onclickStr = "rateMovie(" + JSON.stringify(id) + ", " + i + ")";
+                html += '<i class="' + starClass + ' fa-star" onclick="' + onclickStr + '" title="' + i + ' stars" style="cursor:pointer;"></i>';
             }
             if (currentRating > 0) {
                 html += '<span style="color:var(--text-muted);margin-left:10px;font-size:0.85rem;">(' + currentRating + '/5)</span>';
