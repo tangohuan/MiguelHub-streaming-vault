@@ -314,6 +314,88 @@
             transition: opacity 0.3s;
         }
         .ad-block-notice.show { opacity: 1; }
+
+        /* ===== EPISODE NAVIGATION ===== */
+        .episode-nav-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 4%;
+            background: var(--bg-light);
+            border-top: 1px solid var(--border);
+            gap: 15px;
+        }
+        .episode-nav-btn {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 20px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            cursor: pointer;
+            transition: all 0.3s;
+            flex: 1;
+            max-width: 300px;
+        }
+        .episode-nav-btn:hover:not(:disabled) {
+            background: var(--primary);
+            border-color: var(--primary);
+            transform: translateY(-2px);
+        }
+        .episode-nav-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+        .episode-nav-btn.prev {
+            justify-content: flex-start;
+        }
+        .episode-nav-btn.next {
+            justify-content: flex-end;
+            flex-direction: row-reverse;
+        }
+        .episode-nav-thumb {
+            width: 80px;
+            height: 45px;
+            border-radius: 4px;
+            overflow: hidden;
+            background: var(--bg);
+            flex-shrink: 0;
+        }
+        .episode-nav-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .episode-nav-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            overflow: hidden;
+        }
+        .episode-nav-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .episode-nav-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .episode-current-info {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+        .episode-current-info span {
+            color: var(--text);
+            font-weight: 600;
+        }
 </style>
 <base target="_blank">
 <base target="_blank">
@@ -593,6 +675,25 @@
                 <button class="control-btn" onclick="toggleFullscreen()"><i class="fas fa-expand"></i> Fullscreen</button>
                 <div class="server-badge"><span class="rec">HD:</span> <span id="currentServerName">VidFast</span></div>
             </div>
+        </div>
+        <div class="episode-nav-bar" id="episodeNavBar" style="display:none;">
+            <button class="episode-nav-btn prev" id="prevEpBtn" onclick="playPrevEpisode()">
+                <i class="fas fa-chevron-left" style="font-size:1.2rem;"></i>
+                <div class="episode-nav-info">
+                    <div class="episode-nav-label">Previous</div>
+                    <div class="episode-nav-title" id="prevEpTitle">—</div>
+                </div>
+            </button>
+            <div class="episode-current-info">
+                S<span id="currentSeasonNum">1</span> E<span id="currentEpisodeNum">1</span>
+            </div>
+            <button class="episode-nav-btn next" id="nextEpBtn" onclick="playNextEpisode()">
+                <i class="fas fa-chevron-right" style="font-size:1.2rem;"></i>
+                <div class="episode-nav-info">
+                    <div class="episode-nav-label">Next</div>
+                    <div class="episode-nav-title" id="nextEpTitle">—</div>
+                </div>
+            </button>
         </div>
         <div class="watch-details">
             <h1 class="watch-title" id="watchTitle">Title</h1>
@@ -1236,10 +1337,12 @@
 
             if (type === "tv") {
                 currentSeason = startSeason;
+                currentEpisodeNumber = startEpisode;
                 document.getElementById("episodesSection").classList.add("active");
                 await renderRealEpisodes();
             } else {
                 document.getElementById("episodesSection").classList.remove("active");
+                document.getElementById('episodeNavBar').style.display = 'none';
             }
             document.getElementById("vidfastPlayer").src = embedUrl;
             resetPlayerInteraction();
@@ -1352,12 +1455,14 @@
             });
         }
 
-        function changeSeason(season) {
+        async function changeSeason(season) {
             currentSeason = season;
-            renderEpisodes();
+            currentEpisodeNumber = 1;
+            await renderRealEpisodes();
         }
 
         async function playEpisode(season, episode) {
+            currentEpisodeNumber = episode;
             let embedId = currentMovie.imdbId || currentMovie.id;
             if (!String(embedId).startsWith('tt') && !String(currentMovie.id).startsWith('tt')) {
                 try {
@@ -1368,6 +1473,7 @@
             const embedUrl = buildEmbedUrl(embedId, 'tv', season, episode, 0);
             document.getElementById("vidfastPlayer").src = embedUrl;
             document.querySelectorAll(".episode-item").forEach(function(card, idx) { card.classList.toggle("active", idx === episode - 1); });
+            updateEpisodeNav();
             showToast("Playing Season " + season + ", Episode " + episode);
         }
 
@@ -1615,6 +1721,105 @@
         }
     
 
+
+        /* ========== EPISODE NAVIGATION ========== */
+        let currentEpisodeNumber = 1;
+
+        function updateEpisodeNav() {
+            const navBar = document.getElementById('episodeNavBar');
+            if (!currentMovie || currentMovie.type !== 'tv') {
+                navBar.style.display = 'none';
+                return;
+            }
+            navBar.style.display = 'flex';
+
+            // Update current season/episode display
+            document.getElementById('currentSeasonNum').textContent = currentSeason;
+            document.getElementById('currentEpisodeNum').textContent = currentEpisodeNumber;
+
+            // Get current season's episodes
+            const seasonEpisodes = realEpisodeData || [];
+            const totalEpisodes = seasonEpisodes.length;
+            const totalSeasons = currentMovie.seasons || 1;
+
+            // Previous button
+            const prevBtn = document.getElementById('prevEpBtn');
+            const prevTitle = document.getElementById('prevEpTitle');
+
+            if (currentEpisodeNumber > 1) {
+                prevBtn.disabled = false;
+                const prevEp = seasonEpisodes[currentEpisodeNumber - 2];
+                prevTitle.textContent = prevEp ? (prevEp.name || 'Episode ' + (currentEpisodeNumber - 1)) : 'Episode ' + (currentEpisodeNumber - 1);
+            } else if (currentSeason > 1) {
+                // Previous season's last episode
+                prevBtn.disabled = false;
+                prevTitle.textContent = 'Season ' + (currentSeason - 1) + ' Finale';
+            } else {
+                prevBtn.disabled = true;
+                prevTitle.textContent = '—';
+            }
+
+            // Next button
+            const nextBtn = document.getElementById('nextEpBtn');
+            const nextTitle = document.getElementById('nextEpTitle');
+
+            if (currentEpisodeNumber < totalEpisodes) {
+                nextBtn.disabled = false;
+                const nextEp = seasonEpisodes[currentEpisodeNumber];
+                nextTitle.textContent = nextEp ? (nextEp.name || 'Episode ' + (currentEpisodeNumber + 1)) : 'Episode ' + (currentEpisodeNumber + 1);
+            } else if (currentSeason < totalSeasons) {
+                // Next season's first episode
+                nextBtn.disabled = false;
+                nextTitle.textContent = 'Season ' + (currentSeason + 1) + ' Premiere';
+            } else {
+                nextBtn.disabled = true;
+                nextTitle.textContent = '—';
+            }
+        }
+
+        async function playNextEpisode() {
+            const seasonEpisodes = realEpisodeData || [];
+            const totalEpisodes = seasonEpisodes.length;
+            const totalSeasons = currentMovie.seasons || 1;
+
+            if (currentEpisodeNumber < totalEpisodes) {
+                // Next episode in same season
+                currentEpisodeNumber++;
+                playEpisode(currentSeason, currentEpisodeNumber);
+                updateEpisodeNav();
+                showToast('Playing next episode');
+            } else if (currentSeason < totalSeasons) {
+                // First episode of next season
+                currentSeason++;
+                currentEpisodeNumber = 1;
+                await changeSeason(currentSeason);
+                playEpisode(currentSeason, currentEpisodeNumber);
+                updateEpisodeNav();
+                showToast('Playing Season ' + currentSeason + ', Episode 1');
+            }
+        }
+
+        async function playPrevEpisode() {
+            const seasonEpisodes = realEpisodeData || [];
+
+            if (currentEpisodeNumber > 1) {
+                // Previous episode in same season
+                currentEpisodeNumber--;
+                playEpisode(currentSeason, currentEpisodeNumber);
+                updateEpisodeNav();
+                showToast('Playing previous episode');
+            } else if (currentSeason > 1) {
+                // Last episode of previous season
+                currentSeason--;
+                await changeSeason(currentSeason);
+                // Get episode count of previous season
+                const prevSeasonData = realEpisodeData || [];
+                currentEpisodeNumber = prevSeasonData.length || 1;
+                playEpisode(currentSeason, currentEpisodeNumber);
+                updateEpisodeNav();
+                showToast('Playing Season ' + currentSeason + ' Finale');
+            }
+        }
         /* ========== CLICK OVERLAY (ANTI-POPUP PROTECTION) ========== */
         let playerInteracted = false;
         let isPlaying = false;
@@ -1980,6 +2185,10 @@
                     item.appendChild(infoDiv);
                     epGrid.appendChild(item);
                 });
+
+                // Update episode navigation after loading
+                currentEpisodeNumber = 1;
+                updateEpisodeNav();
             } catch (e) {
                 console.warn('Failed to load real episode data, using fallback:', e);
                 renderEpisodes();
